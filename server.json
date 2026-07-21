@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.bytebunny-io/nanocart-mcp",
+  "description": "Manage your NanoCart store from any AI agent: products, variants, images, categories, coupons, orders, subscribers, settings, sales reports, and analytics.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/ByteBunny-io/nanocart-mcp",
+    "source": "github"
+  },
+  "version_detail": { "version": "1.0.0" },
+  "packages": [
+    {
+      "registry_name": "npm",
+      "name": "nanocart-mcp",
+      "version": "1.0.0",
+      "runtime_hint": "npx",
+      "environment_variables": [
+        { "name": "NANOCART_API_KEY", "description": "Your NanoCart Admin API key (portal.nanocart.io -> Settings -> API Keys)", "is_required": true, "is_secret": true },
+        { "name": "NANOCART_STORE_ID", "description": "Your store ID / slug (portal.nanocart.io -> Settings -> Store Information)", "is_required": true }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "transport_type": "streamable-http",
+      "url": "https://mcp.nanocart.io/mcp",
+      "headers": [
+        { "name": "Authorization", "description": "Bearer <your sc_live_ API key>", "is_required": true, "is_secret": true },
+        { "name": "X-Store-Id", "description": "Your store ID (or append ?store=your-store-id to the URL)", "is_required": false }
+      ]
+    }
+  ]
+}

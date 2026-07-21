@@ -1,0 +1,31 @@
+{
+  "name": "nanocart-mcp",
+  "version": "1.0.0",
+  "description": "Official NanoCart MCP server — manage your NanoCart store (products, orders, coupons, reports, settings) from any MCP-capable AI agent.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "nanocart-mcp": "bin/stdio.js" },
+  "main": "dist/server.js",
+  "files": ["bin", "dist", "README.md", "LICENSE", "server.json"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node build-lambda.mjs",
+    "test": "vitest run",
+    "start": "node bin/stdio.js",
+    "start:http": "node dist/http.js"
+  },
+  "repository": { "type": "git", "url": "https://github.com/ByteBunny-io/nanocart-mcp" },
+  "homepage": "https://docs.nanocart.io/#ai-build",
+  "author": "NanoCart (https://nanocart.io)",
+  "keywords": ["mcp", "modelcontextprotocol", "ecommerce", "shopping-cart", "nanocart", "stripe", "paypal", "ai-agent"],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "esbuild": "^0.24.0",
+    "@types/node": "^22.0.0"
+  }
+}
