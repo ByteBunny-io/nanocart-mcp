@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools } from './tools.js';
 import { Ctx } from './api.js';
 
-export const SERVER_INFO = { name: 'nanocart', version: '1.0.0' };
+export const SERVER_INFO = { name: 'nanocart', version: '1.0.1' };
 
 export function buildServer(getCtx: () => Ctx): McpServer {
   const server = new McpServer(SERVER_INFO, {
