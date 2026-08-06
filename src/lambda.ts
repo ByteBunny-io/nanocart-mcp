@@ -23,7 +23,7 @@ export async function handler(event: any) {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ok: true, server: 'nanocart-mcp', version: '1.0.1',
+        ok: true, server: 'nanocart-mcp', version: '1.1.0',
         endpoint: 'POST https://mcp.nanocart.io/mcp?store=YOUR_STORE_ID',
         auth: 'Authorization: Bearer <your sc_live_ API key> (or x-api-key header)',
         docs: 'https://docs.nanocart.io/#ai-build',

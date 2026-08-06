@@ -5,7 +5,7 @@ MCP-capable AI agent (Claude Code, Claude Desktop, Cursor, Codex, and friends).
 List and update products (with variants and images), manage orders, coupons,
 categories, subscribers and settings, and pull sales reports — by asking.
 
-**24 tools.** Reads are marked read-only; destructive tools (archive product,
+**31 tools.** Reads are marked read-only; destructive tools (archive product,
 delete coupon) are annotated so your agent asks before acting. Refunds, billing
 changes, and API-key management are deliberately NOT exposed — do those in your
 [dashboard](https://portal.nanocart.io).

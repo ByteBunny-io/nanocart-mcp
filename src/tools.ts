@@ -34,6 +34,7 @@ const variantSchema = z.object({
   sku: z.string().optional(),
   inventory: z.number().int().min(0).nullable().optional().describe('null = untracked/unlimited'),
   optionValues: z.record(z.string()).optional().describe('Axis map, e.g. {"Size":"M","Color":"Navy"}'),
+  vendor_sku: z.string().optional().describe("Fulfillment vendor's item number for THIS variant (overrides the product-level vendor_sku on vendor order sheets)"),
 });
 
 function mapVariants(variants?: z.infer<typeof variantSchema>[]) {
@@ -43,6 +44,7 @@ function mapVariants(variants?: z.infer<typeof variantSchema>[]) {
     sku: v.sku,
     inventory: v.inventory,
     optionValues: v.optionValues,
+    vendorSku: v.vendor_sku,
   }));
 }
 
@@ -197,6 +199,9 @@ export function registerTools(server: McpServer, getCtx: GetCtx) {
       tags: z.array(z.string()).optional(),
       options: z.array(z.object({ name: z.string(), values: z.array(z.string()) })).optional(),
       variants: z.array(variantSchema).optional(),
+      fulfillment_vendor_id: z.string().optional().describe('Route orders for this product to a fulfillment vendor (see list_vendors) — the vendor is emailed an order sheet automatically'),
+      vendor_sku: z.string().optional().describe("The vendor's own item number for this product"),
+      vendor_notes: z.string().optional().describe('Standing per-product instruction for the vendor, e.g. "Front print, design #12"'),
     },
   }, async (args) => {
     const ctx = getCtx();
@@ -208,6 +213,8 @@ export function registerTools(server: McpServer, getCtx: GetCtx) {
         images: args.images, productType: args.productType, featured: args.featured,
         slug: args.slug, tags: args.tags, options: args.options,
         variants: mapVariants(args.variants),
+        fulfillmentVendorId: args.fulfillment_vendor_id,
+        vendorSku: args.vendor_sku, vendorNotes: args.vendor_notes,
       };
       Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
       return ok(redact(await api(ctx, 'POST', `/shop/${await sid(ctx)}/admin/products`, body)));
@@ -231,6 +238,9 @@ export function registerTools(server: McpServer, getCtx: GetCtx) {
       tags: z.array(z.string()).optional(),
       options: z.array(z.object({ name: z.string(), values: z.array(z.string()) })).optional(),
       variants: z.array(variantSchema).optional(),
+      fulfillment_vendor_id: z.string().optional().describe('Route orders to a fulfillment vendor; empty string un-routes'),
+      vendor_sku: z.string().optional().describe("The vendor's item number for this product"),
+      vendor_notes: z.string().optional().describe('Standing per-product instruction for the vendor'),
     },
   }, async (args) => {
     const ctx = getCtx();
@@ -241,6 +251,8 @@ export function registerTools(server: McpServer, getCtx: GetCtx) {
         compareAtPrice: args.compare_at_price_cents, inventory: args.inventory,
         images: args.images, featured: args.featured, tags: args.tags,
         options: args.options, variants: mapVariants(args.variants),
+        fulfillmentVendorId: args.fulfillment_vendor_id,
+        vendorSku: args.vendor_sku, vendorNotes: args.vendor_notes,
       };
       Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
       return ok(redact(await api(ctx, 'PUT', `/shop/${await sid(ctx)}/admin/products`, body)));
@@ -412,6 +424,111 @@ export function registerTools(server: McpServer, getCtx: GetCtx) {
       Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
       if (!Object.keys(body).length) throw new NanoCartError(400, 'Provide at least one field to update.');
       return ok(redact(await api(ctx, 'PUT', `/shop/admin/stores/${await sid(ctx)}`, body)));
+    } catch (e) { return err(e); }
+  });
+
+  // ── Fulfillment vendors (v2p12-u63) ────────────────────────────────────────
+  // Custom partners (print shops, drop shippers) that receive emailed order
+  // sheets when their routed products sell. Vendor emails NEVER contain prices
+  // — the template system has no price tags by design. Pro/Expert plans only.
+
+  const vendorFields = {
+    name: z.string().min(1).max(60).optional(),
+    to: z.array(z.string()).min(1).max(5).optional().describe('Recipient email addresses (1-5)'),
+    cc: z.array(z.string()).max(5).optional(),
+    subject_template: z.string().max(150).optional().describe('Subject line; {{order.number}} {{store.name}} {{vendor.name}} resolve'),
+    template_html: z.string().optional().describe('Custom order-sheet HTML (max 50KB). Empty = the standard sheet. Custom HTML MUST contain {{items_table}} or an {{#items}}…{{/items}} block or the API returns NO_ITEMS_PLACEHOLDER. There are NO price tags.'),
+    include_shipping: z.boolean().optional().describe('Fill {{shipping_address}} with the customer ship-to (default true)'),
+    include_customer_contact: z.boolean().optional().describe('Fill {{customer.name}}/{{customer.email}} (default false)'),
+    notes: z.string().max(2000).optional().describe('Standing instructions sent with every order via {{vendor.notes}}'),
+    status: z.enum(['active', 'paused']).optional().describe('paused = new orders are skipped (recorded on the order) until resumed'),
+  };
+
+  function vendorBody(args: any, existing: any = {}) {
+    const email = existing.email ?? {};
+    return {
+      name: args.name ?? existing.name,
+      channel: 'email',
+      status: args.status ?? existing.status ?? 'active',
+      email: { to: args.to ?? email.to ?? [], cc: args.cc ?? email.cc ?? [] },
+      subjectTemplate: args.subject_template ?? existing.subjectTemplate ?? '',
+      templateHtml: args.template_html ?? existing.templateHtml ?? '',
+      includeShipping: args.include_shipping ?? existing.includeShipping ?? true,
+      includeCustomerContact: args.include_customer_contact ?? existing.includeCustomerContact ?? false,
+      notes: args.notes ?? existing.notes ?? '',
+    };
+  }
+
+  server.registerTool('list_vendors', {
+    description: 'List the store\'s fulfillment vendors — custom partners (e.g. a local print shop) that get emailed an order sheet when their routed products sell. Metadata only; use get_vendor for the email template HTML. Pro/Expert plans.',
+    annotations: RO,
+  }, async () => {
+    const ctx = getCtx();
+    try { return ok(redact(await api(ctx, 'GET', `/shop/${await sid(ctx)}/admin/vendors`))); } catch (e) { return err(e); }
+  });
+
+  server.registerTool('get_vendor', {
+    description: 'Fetch one fulfillment vendor including its order-sheet templateHtml.',
+    annotations: RO,
+    inputSchema: { vendorId: z.string() },
+  }, async ({ vendorId }) => {
+    const ctx = getCtx();
+    try { return ok(redact(await api(ctx, 'GET', `/shop/${await sid(ctx)}/admin/vendors/${vendorId}`))); } catch (e) { return err(e); }
+  });
+
+  server.registerTool('create_vendor', {
+    description: 'Create a fulfillment vendor. Requires name and at least one "to" address. Route products to it afterwards via update_product (fulfillment_vendor_id + vendor_sku). Vendor order emails never include prices. Max 10 vendors per store.',
+    annotations: WRITE,
+    inputSchema: { ...vendorFields, name: z.string().min(1).max(60), to: z.array(z.string()).min(1).max(5) },
+  }, async (args) => {
+    const ctx = getCtx();
+    try {
+      return ok(redact(await api(ctx, 'POST', `/shop/${await sid(ctx)}/admin/vendors`, vendorBody(args))));
+    } catch (e) { return err(e); }
+  });
+
+  server.registerTool('update_vendor', {
+    description: 'Update a fulfillment vendor (partial — provide only the fields to change; the rest are preserved, including the saved template). Use status "paused"/"active" to pause or resume order emails.',
+    annotations: WRITE,
+    inputSchema: { vendorId: z.string(), ...vendorFields },
+  }, async (args) => {
+    const ctx = getCtx();
+    try {
+      // The API's PUT is full-replace — read-merge-write so a partial update
+      // can never wipe the saved templateHtml or recipients.
+      const store = await sid(ctx);
+      const existing: any = await api(ctx, 'GET', `/shop/${store}/admin/vendors/${args.vendorId}`);
+      return ok(redact(await api(ctx, 'PUT', `/shop/${store}/admin/vendors/${args.vendorId}`,
+        vendorBody(args, existing.vendor ?? {}))));
+    } catch (e) { return err(e); }
+  });
+
+  server.registerTool('delete_vendor', {
+    description: 'Delete a fulfillment vendor — its routed products keep selling but orders stop being forwarded. CONFIRM WITH THE USER before calling; name the vendor, not just the id.',
+    annotations: DESTRUCTIVE,
+    inputSchema: { vendorId: z.string() },
+  }, async ({ vendorId }) => {
+    const ctx = getCtx();
+    try { return ok(redact(await api(ctx, 'DELETE', `/shop/${await sid(ctx)}/admin/vendors/${vendorId}`))); } catch (e) { return err(e); }
+  });
+
+  server.registerTool('send_vendor_test', {
+    description: 'Email the MERCHANT (never the vendor) a test order sheet rendered with sample data, so they can see exactly what the vendor will receive.',
+    annotations: WRITE,
+    inputSchema: { vendorId: z.string() },
+  }, async ({ vendorId }) => {
+    const ctx = getCtx();
+    try { return ok(redact(await api(ctx, 'POST', `/shop/${await sid(ctx)}/admin/vendors/${vendorId}/test`))); } catch (e) { return err(e); }
+  });
+
+  server.registerTool('send_order_to_vendor', {
+    description: 'Manually email an existing order to a vendor — for orders placed before the vendor was set up (items match by the products\' CURRENT vendor routing) or deliberate re-sends. Orders with routed items are emailed automatically at payment; this is only for manual sends. Note: while the store\'s Fulfillment Test Mode is on, the email goes to the merchant with a [TEST] banner.',
+    annotations: WRITE,
+    inputSchema: { orderId: z.string(), vendorId: z.string() },
+  }, async ({ orderId, vendorId }) => {
+    const ctx = getCtx();
+    try {
+      return ok(redact(await api(ctx, 'POST', `/shop/${await sid(ctx)}/admin/orders/${orderId}/send-vendor`, { vendorId })));
     } catch (e) { return err(e); }
   });
 }

@@ -1,6 +1,6 @@
 {
   "name": "nanocart-mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Official NanoCart MCP server \u2014 manage your NanoCart store (products, orders, coupons, reports, settings) from any MCP-capable AI agent.",
   "license": "MIT",
   "type": "module",
